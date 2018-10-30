@@ -1,4 +1,4 @@
-# Parallell indexer written in Rust #
+# Parallel indexer written in Rust #
 
 ## What does it do ##
 It's a small app that indexes all directories and files on your hard drive. It's really fast (indexes the whole harddrive in less than a minute on a macbook with SSD drive).
