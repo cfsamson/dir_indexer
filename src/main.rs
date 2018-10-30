@@ -5,48 +5,50 @@ use rayon::prelude::*;
 use std::fs::*;
 use std::io::*;
 use std::iter::Iterator;
-use std::error::Error;
+use std::sync::{Arc, Mutex};
 
 fn main() {
     let output = File::create("index.txt").unwrap();
-    let mut writer = BufWriter::new(output);
-
+    let writer = BufWriter::new(output);
+    // create a counter and a mutex for the counter
+    let counter = 0;
+    let counter_mutex = Arc::new(Mutex::new(counter));
+    // create a mutex for our bufreader
+    let writer_mutex = Arc::new(Mutex::new(writer));
     let basedir = "/";
     let dir_reader = read_dir(basedir).unwrap();
-    let mut indexer = Indexer::new();
-    indexer.index(dir_reader, &mut writer);
-    writer.flush().unwrap();
-
-    println!("Finished Indexing {} files", indexer.get_count());
+    index(dir_reader, &writer_mutex, &counter_mutex);
+    let mut handle = writer_mutex.lock().unwrap();
+    handle.flush().unwrap();
+    
+    let index_count = counter_mutex.lock().unwrap();
+    println!("Finished Indexing {} files", *index_count);
 }
 
-struct Indexer {
-    counter: usize,
-}
-
-impl Indexer {
-    fn index(&mut self, dir_reader: ReadDir, mut writer: &mut BufWriter<File>) {
-        let entries: Result<Vec<DirEntry>> = dir_reader.collect();
-        for entry in entries.par_iter() {
-            let entry: DirEntry = entry.unwrap();
-            // check if the entry is a directory or a file
-            if entry.metadata().unwrap().is_dir() {
-                self.index(read_dir(entry.path()).unwrap(), &mut writer);
-            } else {
-                let path = entry.path();
-                let txt = path.to_str().unwrap_or("ERROR").as_bytes();
-                writer.write_all(txt).unwrap();
-                self.counter += 1;
+fn index(
+    dir_reader: ReadDir,
+    writer: &Arc<Mutex<BufWriter<File>>>,
+    counter: &Arc<Mutex<usize>>,
+) {
+    let entries: Vec<Result<DirEntry>> = dir_reader.collect();
+    entries.into_par_iter().for_each(move |entry| {
+        match &entry {
+            Err(e) => println!("Cannot read dir/file: {}", e),
+            Ok(entry) => {
+                // check if the entry is a directory or a file
+                if entry.metadata().unwrap().is_dir() {
+                    println!("Searching: {:?}", entry.file_name());
+                    let writer = writer.clone();
+                    index(read_dir(entry.path()).unwrap(), &writer, counter);
+                } else {
+                    let path = entry.path();
+                    let txt = path.to_str().unwrap_or("ERROR").as_bytes();
+                    let mut writer = writer.lock().unwrap();
+                    writer.write_all(txt).unwrap();
+                    let mut c = counter.lock().unwrap();
+                    *c += 1;
+                }
             }
         }
-    }
-    fn get_count(&self) -> usize {
-        self.counter
-    }
-
-    fn new() -> Self {
-        Indexer {
-            counter: 0,
-        }
-    }
+    })
 }
