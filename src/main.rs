@@ -15,7 +15,7 @@ fn main() {
     let counter_mutex = Arc::new(Mutex::new(counter));
     // create a mutex for our bufreader
     let writer_mutex = Arc::new(Mutex::new(writer));
-    let basedir = "/Users/carlfredriksamson";
+    let basedir = "/";
     let dir_reader = read_dir(basedir).unwrap();
 
     println!("Starting indexing...");
@@ -41,12 +41,21 @@ fn index(dir_reader: ReadDir, writer: &Arc<Mutex<BufWriter<File>>>, counter: &Ar
                     Ok(entr) => {
                         if entr.is_dir() {
                             let writer = writer.clone();
-                            index(read_dir(entry.path()).unwrap(), &writer, counter);
+                            match read_dir(entry.path()) {
+                                Err(_) => {
+                                    let path_buf = entry.path();
+                                    let path = path_buf.to_str().unwrap_or("Invalid path");
+                                    println!("Can't access: {}", path);
+                                    },
+                                Ok(path) => index(path, &writer, counter),
+                            }
+                            
                         } else {
                             let path = entry.path();
                             let txt = path.to_str().unwrap_or("ERROR").as_bytes();
                             let mut writer = writer.lock().unwrap();
                             writer.write_all(txt).unwrap();
+                            writer.write_all(&[b'\n']).unwrap();
                             let mut c = counter.lock().unwrap();
                             *c += 1;
                         }
